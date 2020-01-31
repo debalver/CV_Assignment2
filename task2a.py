@@ -11,6 +11,7 @@ def pre_process_images(X: np.ndarray):
     Returns:
         X: images of shape [batch size, 785]
     """
+    print("Hey, that's a test for GitHub")
     assert X.shape[1] == 784,\
         f"X.shape[1]: {X.shape[1]}, should be 784"
     return X
