@@ -54,7 +54,6 @@ def cross_entropy_loss(targets: np.ndarray, outputs: np.ndarray):
         f"Targets shape: {targets.shape}, outputs: {outputs.shape}"
     ce = targets * np.log(outputs)
     return np.sum(ce) / (-1 * ce.shape[0])
-    print("test for github")
     raise NotImplementedError
 
 
