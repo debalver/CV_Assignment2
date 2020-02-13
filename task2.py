@@ -156,9 +156,6 @@ if __name__ == "__main__":
         use_improved_sigmoid,
         use_improved_weight_init)
 
-    # Initializing weights before any training
-    model.ws[0] = np.random.uniform(-1, 1, (785, 64))
-    model.ws[1] = np.random.uniform(-1, 1, (64, 10))
 
     model, train_loss, val_loss, train_accuracy, val_accuracy = train(
         model,

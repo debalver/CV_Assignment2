@@ -68,26 +68,67 @@ class SoftmaxModel:
         # Define number of input nodes
         self.I = 785 # 28x28=784 pixels + 1 for bias
         self.use_improved_sigmoid = use_improved_sigmoid
+        self.use_improved_weight_init = use_improved_weight_init
 
         # Define number of output nodes
         # neurons_per_layer = [64, 10] indicates that we will have two layers:
         # A hidden layer with 64 neurons and a output layer with 10 neurons.
         self.neurons_per_layer = neurons_per_layer
 
-        # Values computed en forward function and needed in backward function
-        self.aj = None
-        self.zj = None
+        # Values computed in forward function and needed in backward function
+        self.aj = []
+        self.zj = []
+        for layer, size in enumerate(neurons_per_layer):
+            self.aj.append(np.zeros(size))
+            self.zj.append(np.zeros(size))
+
 
         # Initialize the weights
         self.ws = []
-        prev = self.I
-        for size in self.neurons_per_layer:
-            w_shape = (prev, size)
-            print("Initializing weight to shape:", w_shape)
-            w = np.zeros(w_shape)
+        for layer, nb_col in enumerate(self.neurons_per_layer):
+            if layer == 0:
+                nb_row = self.I
+                if use_improved_weight_init:
+                    w = np.random.normal(0, 1 / np.sqrt(self.I - 1), (nb_row, nb_col))
+                else:
+                    w = np.random.uniform(-1, 1, (nb_row, nb_col))
+            else:
+                nb_row = neurons_per_layer[layer-1]
+                w = np.random.uniform(-1, 1, (nb_row, nb_col))
             self.ws.append(w)
-            prev = size
-        self.grads = [None for i in range(len(self.ws))]
+
+        # Initialize the gradient
+        self.grads = []
+        for layer in range(len(self.ws)):
+            self.grads.append(np.zeros_like(self.ws[layer]))
+
+        # task 3d - variable for computing the momemtum gradient
+        self.delta_w = []
+        for layer in range(len(neurons_per_layer)):
+            self.delta_w.append(np.zeros_like(self.ws[layer]))
+
+    def sigmoid(self, layer):
+        """
+        Compute the activation function for the a neuron in the given hidden layer
+        """
+        if self.use_improved_sigmoid:
+            return 1.7159 * np.tanh((2 / 3) * self.zj[layer])
+        else:
+            return 1 / (1 + np.exp(-self.zj[layer]))
+
+    def sigmoid_derivative(self, layer):
+        """
+        Compute the sigmoid derivative for a given neuron in a given hidden layer
+        :param layer: layer we are working on
+        :return: the derivative of the sigmoid
+        """
+        if self.use_improved_sigmoid:
+            return (1.7159 * 2) / (3 * (np.cosh((2 / 3) * self.zj[layer])) ** 2)
+        else:
+            exp_zj = np.exp(-self.zj[layer])
+            return exp_zj / ((1 + exp_zj) ** 2)
+
+
 
     def forward(self, X: np.ndarray) -> np.ndarray:
         """
@@ -96,19 +137,25 @@ class SoftmaxModel:
         Returns:
             y: output of model with shape [batch size, num_outputs]
         """
-        # Sigmoid function for the hidden layer
-        #hidden_layer_activation = np.zeros((self.ws[0].shape[0], self.ws[0].shape[1]))
-        self.zj = X @ self.ws[0]
-        self.aj = 1 / (1 + np.exp(-self.zj)) # Hidden layer activation
 
-        # Softmax function for the output layer
-        y = np.exp(self.aj @ self.ws[1])
+        # First hidden layer use the sigmoid activation function
+        self.zj[0] = X @ self.ws[0]
+        self.aj[0] = 1 / (1 + np.exp(-self.zj[0]))
+
+        # Run throughout the rest of the hidden layers
+        for layer in range(1, len(self.neurons_per_layer) - 1):
+            self.zj[layer] = self.aj[layer - 1] @ self.ws[layer]
+            self.aj[layer] = self.sigmoid(layer)
+
+        # Output layer use the Softmax activation function
+        ak = np.exp(self.aj[-2] @ self.ws[-1])
         # Normalize each y^n by the sum of the vector's values
-        sum = np.sum(y, axis=1)
-        output_layer_activation = y/sum[:, None]
+        sum = np.sum(ak, axis=1)
+        self.aj[-1] = ak / sum[:, None]
 
-        return output_layer_activation
-        return None
+        # Return the activation of the last layer
+        return self.aj[-1]
+
 
     def backward(self, X: np.ndarray, outputs: np.ndarray,
                  targets: np.ndarray) -> None:
@@ -122,24 +169,31 @@ class SoftmaxModel:
             f"Output shape: {outputs.shape}, targets: {targets.shape}"
         # A list of gradients.
         # For example, self.grads[0] will be the gradient for the first hidden layer
-        # self.grads = []
 
-        # Output layer backpropagation
+        # Output layer
         delta_k = (targets - outputs) / (-X.shape[0])
-        self.grads[1] = self.aj.T @ delta_k
+        self.grads[-1] = self.aj[-2].T @ delta_k
 
-        # Hidden layer backpropagation
-        exp = np.exp(-self.zj)
-        sigmoid_derivative = exp / ((1 + exp) ** 2)
-        #print("delta_k.shape = ", delta_k.shape, "self.aj.shape = ", self.aj.shape, "self.zj.shape = ", self.zj.shape, " sigmoid_derivative.shape = ", sigmoid_derivative.shape, "ws.[1].shape = ", self.ws[1].shape)
+        # Hidden layers
+        delta_j = delta_k
+        # Starting from last but one to input layer
+        for layer in range(len(self.neurons_per_layer) - 2, -1, -1):
+            delta_j =  delta_j @ self.ws[layer+1].T * self.sigmoid_derivative(layer)
+            if layer == 0:
+                self.grads[layer] = X.T @ delta_j
+            else:
+                self.grads[layer] = self.aj[layer - 1].T@delta_j
 
-        delta_j = (delta_k @ self.ws[1].T) * sigmoid_derivative
-        #print("delta_j.shape = ", delta_j.shape, " X.shape = ", X.shape)
-        self.grads[0] = X.T @ delta_j
-
+        # Small test to assert a correct size
         for grad, w in zip(self.grads, self.ws):
             assert grad.shape == w.shape,\
                 f"Expected the same shape. Grad shape: {grad.shape}, w: {w.shape}."
+
+
+
+
+
+
 
     def zero_grad(self) -> None:
         self.grads = [None for i in range(len(self.ws))]
@@ -206,8 +260,6 @@ if __name__ == "__main__":
 
     X_train, Y_train, *_ = utils.load_full_mnist(0.1)
     mean, standard_deviation = find_mean_and_deviation(X_train)
-    #print("mean: ", mean, " / standard deviation: ", standard_deviation)
-    #exit()
     X_train = pre_process_images(X_train, mean, standard_deviation)
     Y_train = one_hot_encode(Y_train, 10)
     assert X_train.shape[1] == 785,\
@@ -217,7 +269,7 @@ if __name__ == "__main__":
     use_improved_sigmoid = False
     use_improved_weight_init = False
     model = SoftmaxModel(
-        neurons_per_layer, use_improved_sigmoid, use_improved_weight_init)
+        neurons_per_layer, use_improved_sigmoid, use_improved_weight_init, True)
     """logits = model.forward(X_train)
     np.testing.assert_almost_equal(
         logits.mean(), 1/10,
@@ -232,6 +284,4 @@ if __name__ == "__main__":
     for layer_idx, w in enumerate(model.ws):
         model.ws[layer_idx] = np.random.uniform(-1, 1, size=w.shape)
 
-    print("Llamando a grandient_approximation_test...")
     gradient_approximation_test(model, X_train, Y_train)
-    print("gradient approximation test ya se ha ejecutado, todo bien :)")
