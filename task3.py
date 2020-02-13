@@ -42,7 +42,8 @@ def train(
         # Task 3 hyperparameters,
         use_shuffle: bool,
         use_momentum: bool,
-        momentum_gamma: float):
+        momentum_gamma: float,
+        all_tricks=False):
     X_train, Y_train, X_val, Y_val, X_test, Y_test = datasets
 
     # Important hyper parameter setting
@@ -167,12 +168,10 @@ if __name__ == "__main__":
     use_shuffle = False
     use_improved_sigmoid = False
     use_improved_weight_init = False
-    use_momentum = False 
+    use_momentum = False
 
     # Task 3d: momentum with learning rate equal to 0.02
     if not all_tricks:
-        if use_momentum:
-            learning_rate -= .08
 
         model = SoftmaxModel(
             neurons_per_layer,
@@ -189,7 +188,8 @@ if __name__ == "__main__":
             batch_size=batch_size,
             use_shuffle=use_shuffle,
             use_momentum=use_momentum,
-            momentum_gamma=momentum_gamma)
+            momentum_gamma=momentum_gamma,
+            all_tricks=all_tricks)
 
         print("Final Train Cross Entropy Loss:",
               cross_entropy_loss(Y_train, model.forward(X_train)))
