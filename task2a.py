@@ -33,6 +33,16 @@ def pre_process_images(X: np.ndarray, mean, standard_deviation):
     assert X.shape[1] == 784,\
         f"X.shape[1]: {X.shape[1]}, should be 784"
     # Normalizes the input X
+    X = X.astype(float)
+
+    #mean = 33.31
+    #standard_deviation = 78.57
+    #X = (X-mean)/standard_deviation
+    #ones = np.ones((X.shape[0],1))
+    #X = np.concatenate((X,ones), axis=1)
+    #return X
+
+
     X_norm = (X - mean) / standard_deviation
 
     # Applies the bias trick by adding a column of 1 in the front
@@ -78,7 +88,7 @@ class SoftmaxModel:
         # Values computed in forward function and needed in backward function
         self.aj = []
         self.zj = []
-        for layer, size in enumerate(neurons_per_layer):
+        for layer, size in enumerate(self.neurons_per_layer):
             self.aj.append(np.zeros(size))
             self.zj.append(np.zeros(size))
 
@@ -93,7 +103,7 @@ class SoftmaxModel:
                 else:
                     w = np.random.uniform(-1, 1, (nb_row, nb_col))
             else:
-                nb_row = neurons_per_layer[layer-1]
+                nb_row = self.neurons_per_layer[layer-1]
                 w = np.random.uniform(-1, 1, (nb_row, nb_col))
             self.ws.append(w)
 
@@ -104,7 +114,7 @@ class SoftmaxModel:
 
         # task 3d - variable for computing the momemtum gradient
         self.delta_w = []
-        for layer in range(len(neurons_per_layer)):
+        for layer in range(len(self.neurons_per_layer)):
             self.delta_w.append(np.zeros_like(self.ws[layer]))
 
     def sigmoid(self, layer):
@@ -112,7 +122,10 @@ class SoftmaxModel:
         Compute the activation function for the a neuron in the given hidden layer
         """
         if self.use_improved_sigmoid:
-            return 1.7159 * np.tanh((2 / 3) * self.zj[layer])
+            #return 1.7159 * np.tanh((2 / 3) * self.zj[layer])
+            impr_sig_a = 1.759
+            impr_sig_b = 2/3
+            return impr_sig_a*np.tanh(impr_sig_b*self.zj[layer])
         else:
             return 1 / (1 + np.exp(-self.zj[layer]))
 
@@ -123,7 +136,12 @@ class SoftmaxModel:
         :return: the derivative of the sigmoid
         """
         if self.use_improved_sigmoid:
-            return (1.7159 * 2) / (3 * (np.cosh((2 / 3) * self.zj[layer])) ** 2)
+            #return (1.7159 * 2/3) / ( (np.cosh( (2 / 3) * self.zj[layer]) ) ** 2)
+            impr_sig_a = 1.759
+            impr_sig_b = 2/3
+            top = 2*impr_sig_a*impr_sig_b
+            denom = np.cosh(2*impr_sig_b*self.zj[layer])+1
+            return top/denom
         else:
             exp_zj = np.exp(-self.zj[layer])
             return exp_zj / ((1 + exp_zj) ** 2)
@@ -140,7 +158,8 @@ class SoftmaxModel:
 
         # First hidden layer use the sigmoid activation function
         self.zj[0] = X @ self.ws[0]
-        self.aj[0] = 1 / (1 + np.exp(-self.zj[0]))
+        #self.aj[0] = 1 / (1 + np.exp(-self.zj[0]))
+        self.aj[0] = self.sigmoid(0)
 
         # Run throughout the rest of the hidden layers
         for layer in range(1, len(self.neurons_per_layer) - 1):
@@ -169,10 +188,10 @@ class SoftmaxModel:
             f"Output shape: {outputs.shape}, targets: {targets.shape}"
         # A list of gradients.
         # For example, self.grads[0] will be the gradient for the first hidden layer
-
+        # Each layer are divided by the batch size, in order to get the mean
         # Output layer
-        delta_k = (targets - outputs) / (-X.shape[0])
-        self.grads[-1] = self.aj[-2].T @ delta_k
+        delta_k = -(targets - outputs)
+        self.grads[-1] = self.aj[-2].T @ delta_k / (X.shape[0])
 
         # Hidden layers
         delta_j = delta_k
@@ -180,10 +199,12 @@ class SoftmaxModel:
         for layer in range(len(self.neurons_per_layer) - 2, -1, -1):
             delta_j =  delta_j @ self.ws[layer+1].T * self.sigmoid_derivative(layer)
             if layer == 0:
-                self.grads[layer] = X.T @ delta_j
+                self.grads[layer] = X.T @ delta_j / (X.shape[0])
             else:
-                self.grads[layer] = self.aj[layer - 1].T@delta_j
+                self.grads[layer] = self.aj[layer - 1].T@delta_j / (X.shape[0])
 
+        #for layer in range(len(self.neurons_per_layer)):
+        #        self.grads[layer] /= X.shape[0]
         # Small test to assert a correct size
         for grad, w in zip(self.grads, self.ws):
             assert grad.shape == w.shape,\
@@ -248,6 +269,7 @@ def gradient_approximation_test(
                     f"Approximation: {gradient_approximation}, actual gradient: {model.grads[layer_idx][i, j]}\n" \
                     f"If this test fails there could be errors in your cross entropy loss function, " \
                     f"forward function or backward function"
+    print("Improved sigmoid : "+str(model.use_improved_sigmoid))
 
 
 if __name__ == "__main__":
@@ -266,10 +288,10 @@ if __name__ == "__main__":
         f"Expected X_train to have 785 elements per image. Shape was: {X_train.shape}"
 
     neurons_per_layer = [64, 10]
-    use_improved_sigmoid = False
+    use_improved_sigmoid = True
     use_improved_weight_init = False
     model = SoftmaxModel(
-        neurons_per_layer, use_improved_sigmoid, use_improved_weight_init, True)
+        neurons_per_layer, use_improved_sigmoid, use_improved_weight_init)
     """logits = model.forward(X_train)
     np.testing.assert_almost_equal(
         logits.mean(), 1/10,
